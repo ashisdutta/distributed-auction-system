@@ -1,0 +1,38 @@
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Status{
+  ACTIVE
+  ENDED
+}
+
+model User {
+  id String @id @default(uuid())
+  email String @unique
+  password String
+  sellAuctions Auction[] @relation("seller")
+  winAuctions Auction[] @relation("winner")
+}
+
+model Auction{
+  id String @id @default(uuid())
+  title String
+  description String
+  photo String[]
+  startPrice Int
+  currentPrice Int @default(0)
+  startTime DateTime
+  endTime DateTime
+  status Status @default(ACTIVE)
+  sellerId String
+  seller User @relation("seller",fields: [sellerId], references: [id])
+  winnerId String
+  winner User? @relation("winner", fields: [winnerId], references: [id])
+}
