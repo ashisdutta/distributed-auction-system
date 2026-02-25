@@ -1,10 +1,10 @@
 import {Hono} from 'hono'
 import prisma from '../lib/prisma.js'
-import { signupInput, emailSchema } from '../middleware/zod.js'
+import { signupInput, emailSchema, signinInput} from '../middleware/zod.js'
 import nodemailer from 'nodemailer'
 import redis from '../lib/redis.js'
 import {sign} from "hono/jwt"
-import {setCookie} from "hono/cookie"
+import {setCookie, deleteCookie} from "hono/cookie"
 
 
 export const userRouter = new Hono()
@@ -101,7 +101,7 @@ userRouter.post("/signup", async (c)=>{
         })
         
 
-        const token = await sign({id:newUser.id, name:newUser.name}, process.env.JWT_SECRET as string)
+        const token = await sign({id:newUser.id, name, email}, process.env.JWT_SECRET as string)
 
         setCookie(c,"auth_token", token, {
             httpOnly:true,
@@ -118,5 +118,45 @@ userRouter.post("/signup", async (c)=>{
 })
 
 userRouter.post("/signin", async (c)=>{
+    const body = await c.req.json();
 
+    const validated = signinInput.safeParse(body);
+    if(!validated.success){
+        return c.json({
+            error:"Invalid input format"
+        })
+    }
+    const {email, password} = validated.data;
+    try {
+        const user = await prisma.user.findUnique({
+            where: {email}
+        });
+
+        if(!user){
+            c.status(411)
+            return c.json({
+                message: "user not found"
+            })
+        }
+
+        const token = await sign({id:user.id, name:user.name, email}, process.env.JWT_SECRET as string);
+
+        setCookie(c,"auth_token", token, {
+            httpOnly:true,
+            secure:true,
+            sameSite:'Lax',
+            maxAge: 60*60*24*7
+        })
+
+        return c.json({
+            message: "User Successfully signedin"
+        })
+    } catch (error) {
+        return c.json({error:"Internal Server error"}, 500)
+    }
+})
+
+userRouter.post("/signout", async (c)=>{
+    deleteCookie(c, 'auth_token');
+    return c.json({ message: "Signed out successfully" });
 })
