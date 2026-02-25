@@ -11,6 +11,7 @@ datasource db {
 enum Status{
   ACTIVE
   ENDED
+  PENDING
 }
 
 model User {
@@ -29,11 +30,12 @@ model Auction{
   photo String[]
   startPrice Int
   currentPrice Int @default(0)
-  startTime DateTime
+  startTime DateTime?
   endTime DateTime
-  status Status @default(ACTIVE)
+  status Status @default(PENDING)
   sellerId String
   seller User @relation("seller",fields: [sellerId], references: [id])
-  winnerId String
+  winnerId String?
   winner User? @relation("winner", fields: [winnerId], references: [id])
+  @@index([status])
 }
