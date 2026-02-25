@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: auction_db
+    ports:
+      - "5432:5432"
+    volumes:
+      # This is the 'Permanent' part. 
+      # It maps the folder on YOUR machine to the folder INSIDE Docker.
+      - postgres_data:/var/lib/postgresql/data 
+
+  redis:
+    image: redis:alpine
+    restart: always
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:
