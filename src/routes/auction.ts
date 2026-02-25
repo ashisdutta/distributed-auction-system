@@ -131,14 +131,12 @@ auctionRouter.post("/:id/bid", async (c) => {
     const { amount } = await c.req.json(); // The price the user is offering
 
     try {
-        // 1. Fetch the latest data for this auction
         const auction = await prisma.auction.findUnique({
             where: { id: auctionId }
         });
 
         if (!auction) return c.json({ error: "Auction not found" }, 404);
 
-        // 2. Security & Status Checks
         if (auction.status !== "ACTIVE" || auction.endTime < new Date()) {
             return c.json({ error: "This auction is closed" }, 400);
         }
@@ -147,17 +145,15 @@ auctionRouter.post("/:id/bid", async (c) => {
             return c.json({ error: "You cannot bid on your own item!" }, 400);
         }
 
-        // 3. The "Winning" Check
         if (amount <= auction.currentPrice) {
             return c.json({ error: "Your bid must be higher than the current price" }, 400);
         }
 
-        // 4. Update the "Temporary Winner"
         const updatedAuction = await prisma.auction.update({
             where: { id: auctionId },
             data: {
                 currentPrice: amount,
-                winnerId: userId // This user is now the winner (for now!)
+                winnerId: userId 
             }
         });
 
