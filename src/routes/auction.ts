@@ -1,7 +1,7 @@
 import {Hono} from 'hono'
 import prisma from '../lib/prisma.js'
 import { createAuctionSchema } from '../middleware/zod.js'
-import { parse } from 'path'
+import { redis, subClient} from '../lib/redis.js'
 
 
 export const auctionRouter = new Hono<{ Variables: { userId: string } }>()
@@ -125,41 +125,64 @@ auctionRouter.get("/:id", async (c) => {
     }
 });
 
+
 auctionRouter.post("/:id/bid", async (c) => {
     const userId = c.get('userId');
     const auctionId = c.req.param('id');
-    const { amount } = await c.req.json(); // The price the user is offering
+    const { amount } = await c.req.json();
+    
+    // We target the specific "Hash" key for this auction in Redis
+    const auctionKey = `auction:${auctionId}`;
 
     try {
-        const auction = await prisma.auction.findUnique({
-            where: { id: auctionId }
-        });
+        // STEP 1: Execute the Lua Script (The Speed Layer)
+        // Using the .placeBid() method we defined in redis.ts
+        // It returns SUCCESS, LOW_BID, EXPIRED, or AUCTION_NOT_FOUND
+        const result = await redis.placeBid(
+            auctionKey, 
+            amount, 
+            userId, 
+            Date.now()
+        );
 
-        if (!auction) return c.json({ error: "Auction not found" }, 404);
-
-        if (auction.status !== "ACTIVE" || auction.endTime < new Date()) {
-            return c.json({ error: "This auction is closed" }, 400);
+        if (result === "LOW_BID") {
+            return c.json({ error: "Your bid is too low. Someone else bid higher!" }, 400);
+        }
+        if (result === "EXPIRED") {
+            return c.json({ error: "Auction has already ended." }, 400);
+        }
+        if (result === "AUCTION_NOT_FOUND") {
+            return c.json({ error: "Auction data not found in cache." }, 404);
         }
 
-        if (auction.sellerId === userId) {
-            return c.json({ error: "You cannot bid on your own item!" }, 400);
+        // STEP 2: Redis Pub/Sub (The Notification Layer)
+        // We "Broadcast" this update. The WebSocket server is listening.
+        await redis.publish(`auction_updates:${auctionId}`, JSON.stringify({
+            newPrice: amount,
+            bidderId: userId,
+            timestamp: new Date()
+        }));
+
+        // STEP 3: Postgres Sync (The Persistence Layer)
+        // We update the "Source of Truth" in the background.
+        // Even if this fails, the user is already "winning" in memory.
+        try {
+            await prisma.auction.update({
+                where: { id: auctionId },
+                data: {
+                    currentPrice: amount,
+                    winnerId: userId
+                }
+            });
+        } catch (dbError) {
+            console.error("Critical: Failed to sync Redis bid to Postgres", dbError);
+            // In a pro system, you'd add this to a retry queue.
         }
 
-        if (amount <= auction.currentPrice) {
-            return c.json({ error: "Your bid must be higher than the current price" }, 400);
-        }
+        return c.json({ message: "Success! You are currently winning." });
 
-        const updatedAuction = await prisma.auction.update({
-            where: { id: auctionId },
-            data: {
-                currentPrice: amount,
-                winnerId: userId 
-            }
-        });
-
-        return c.json({ message: "Bid placed! You are currently winning.", auction: updatedAuction });
-
-    } catch (e) {
-        return c.json({ error: "Bidding failed" }, 500);
+    } catch (error) {
+        console.error("Bidding Error:", error);
+        return c.json({ error: "Internal server error during bidding" }, 500);
     }
 });
