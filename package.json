@@ -3,6 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "worker": "tsx watch src/workers/auctionCloser.ts",
     "build": "tsc",
     "start": "node dist/index.js"
   },
@@ -15,7 +16,7 @@
     "dotenv": "^17.3.1",
     "hono": "^4.12.1",
     "ioredis": "^5.9.3",
-    "jwt": "^0.2.0",
+    "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.2.1",
     "nodemailer": "^8.0.1",
     "pg": "^8.18.0",
@@ -23,6 +24,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.11.17",
     "@types/nodemailer": "^7.0.11",
     "@types/pg": "^8.16.0",

@@ -1,4 +1,3 @@
-// one listener for the whole app and use a Map to track which WebSockets belong to which auction. This is much more memory-efficient.
 import { WSContext } from 'hono/ws';
 import { subClient } from "../lib/redis.js";
 
@@ -9,23 +8,39 @@ import { subClient } from "../lib/redis.js";
 const subscriptions = new Map<string, Set<WSContext>>();
 
 /**
- * 2. SINGLE REDIS LISTENER
- * we attach this ONCE. It listens to all "shouts" and 
- * distributes them to the correct "rooms" (Sets).
+ * 2. ENHANCED REDIS LISTENER
+ * Listens for bids and "The Gavel" (Auction End).
  */
 subClient.on('message', (channel, message) => {
-  const auctionId = channel.split(':')[1]; // Get '123' from 'auction_updates:123'
+  const auctionId = channel.split(':')[1];
   const clients = subscriptions.get(auctionId);
 
   if (clients) {
+    const data = JSON.parse(message);
+
     clients.forEach((ws) => {
       try {
-        ws.send(message);
+        // We can now intercept the message to add custom logic if needed
+        if (data.type === 'AUCTION_ENDED') {
+            // We could wrap this in a special "Final" UI event for the frontend
+            ws.send(JSON.stringify({
+              ...data,
+              server_note: "The gavel has fallen. This auction is officially closed."
+            }));
+          } else {
+            ws.send(message);
+        }
       } catch (err) {
-        // If sending fails, the socket might be dead; remove it
         clients.delete(ws);
       }
     });
+
+    // Cleanup local memory if the auction is finished
+    if (data.type === 'AUCTION_ENDED') {
+      console.log(`🧹 Cleaning up WS room for closed auction: ${auctionId}`);
+      subClient.unsubscribe(channel);
+      subscriptions.delete(auctionId);
+    }
   }
 });
 
@@ -40,41 +55,33 @@ export const auctionWsHandler = (c: any) => {
         const data = JSON.parse(event.data.toString());
 
         if (data.type === 'JOIN_AUCTION') {
-          const {auctionId} = data;
+          const { auctionId } = data;
           const channel = `auction_updates:${auctionId}`;
 
-          // Add this WebSocket to the specific auction "room"
           if (!subscriptions.has(auctionId)) {
             subscriptions.set(auctionId, new Set());
-            // Only tell Redis to subscribe if this is the first person watching
             await subClient.subscribe(channel);
           }
           
           subscriptions.get(auctionId)?.add(ws);
           console.log(`📡 User joined room for auction: ${auctionId}`);
-
-          /**
-           * 3. CLEANUP
-           * Hono's upgradeWebSocket allows returning a cleanup function.
-           */
-          return () => {
-            const clients = subscriptions.get(auctionId);
-            if (clients) {
-              clients.delete(ws);
-              // If no one is left watching, tell Redis to stop listening to save bandwidth
-              if (clients.size === 0) {
-                subClient.unsubscribe(channel);
-                subscriptions.delete(auctionId);
-              }
-            }
-          };
         }
       } catch (err) {
         console.error("WS Message Error:", err);
       }
     },
 
-    onClose: () => {
+    onClose: (event: any, ws: WSContext) => {
+      // Manual cleanup for individual disconnects
+      subscriptions.forEach((clients, auctionId) => {
+        if (clients.has(ws)) {
+          clients.delete(ws);
+          if (clients.size === 0) {
+            subClient.unsubscribe(`auction_updates:${auctionId}`);
+            subscriptions.delete(auctionId);
+          }
+        }
+      });
       console.log('🔌 Connection closed by client');
     },
   };

@@ -21,10 +21,10 @@ async function runBattleTest() {
         const startTime = new Date(now.getTime() - 60000).toISOString(); // 1 min ago
 
         const createRes = await axios.post(`${API_URL}/auction/create`, {
-            title: "Battle Item: miA3 phone",
-            description: "Testing concurrency with simultaneous bidders.",
+            title: "Battle Item: midddddA3 phone",
+            description: "Testing cddddoncurrency with simultaneous bidders.",
             photo: ["https://example.com/phonemiA3.jpg"],
-            startPrice: 1000,
+            startPrice: 3000,
             durationHours: 1,
             startTime: startTime
         }, { headers: { Cookie: SELLER_A_COOKIE } });
@@ -64,7 +64,7 @@ async function runBattleTest() {
         
         // User B bids $2000
         const bidB = axios.post(`${API_URL}/auction/${auctionId}/bid`, 
-            { amount: 6000 }, { headers: {Cookie: BIDDER_B_COOKIE } });
+            { amount: 5200 }, { headers: {Cookie: BIDDER_B_COOKIE } });
 
         // User C bids $2500
         const bidC = axios.post(`${API_URL}/auction/${auctionId}/bid`, 
@@ -78,7 +78,7 @@ async function runBattleTest() {
         const formatResult = (res: any) => 
             res.status === 'fulfilled' ? "✅ SUCCESS" : `❌ FAILED: ${res.reason.response?.data?.error || res.reason.message}`;
 
-        console.log("User B ($6000):", formatResult(resB));
+        console.log("User B ($5200):", formatResult(resB));
         console.log("User C ($5200):", formatResult(resC));
 
         // Keep connection open for 3 seconds to see final WS logs

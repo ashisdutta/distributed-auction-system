@@ -3,8 +3,8 @@ import prisma from '../lib/prisma.js';
 import { redis } from '../lib/redis.js';
 
 export const startAuctionWorker = () => {
-  // Runs every minute to check for auctions that have passed their endTime
-  cron.schedule('* * * * *', async () => {
+  // Runs every 10 seconds for higher precision than a 1-minute cron
+  cron.schedule('*/10 * * * * *', async () => {
     console.log('⏰ Worker: Checking for auctions to finalize...');
 
     try {
@@ -19,27 +19,34 @@ export const startAuctionWorker = () => {
         if (expiredAuctions.length === 0) return;
 
         for (const auction of expiredAuctions) {
+            // 2. DISTRIBUTED LOCK (ASG Protection)
+            // Prevents multiple server instances from finalizing the same auction.
+            const lockKey = `lock:finalize:${auction.id}`;
+            const acquiredLock = await redis.set(lockKey, "locked", "EX", 30, "NX"); 
+
+            if (!acquiredLock) {
+                console.log(`⏩ Skipping ${auction.id}: Another worker is processing it.`);
+                continue;
+            }
+
             const auctionKey = `auction:${auction.id}`;
             let finalPrice = auction.currentPrice;
             let finalWinner = auction.winnerId;
 
-            // 2. If the auction was ACTIVE, sync the final state from Redis
+            // 3. Final State Sync from Redis
             if (auction.status === 'ACTIVE') {
                 const [redisPrice, redisWinner] = await Promise.all([
                     redis.hget(auctionKey, 'price'),
                     redis.hget(auctionKey, 'winner')
                 ]);
 
-                // Only update if Redis actually had data (prevents null errors)
                 if (redisPrice) finalPrice = Number(redisPrice);
                 if (redisWinner && redisWinner !== "") finalWinner = redisWinner;
 
                 console.log(`🔨 Finalizing ACTIVE Auction ${auction.id}. Winner: ${finalWinner}`);
-            } else {
-                console.log(`📁 Closing PENDING Auction ${auction.id} (Never started).`);
             }
 
-            // 3. Update Postgres Status to ENDED
+            // 4. Update Postgres Status to ENDED
             await prisma.auction.update({
                 where: { id: auction.id },
                 data: {
@@ -49,7 +56,7 @@ export const startAuctionWorker = () => {
                 },
             });
 
-            // 4. Broadcast the end of the auction to WebSockets
+            // 5. Broadcast "The Gavel" to WebSockets
             await redis.publish(`auction_updates:${auction.id}`, JSON.stringify({
                 type: "AUCTION_ENDED",
                 finalPrice: finalPrice,
@@ -57,8 +64,7 @@ export const startAuctionWorker = () => {
                 timestamp: new Date().toISOString()
             }));
 
-            // 5. Cleanup: Remove from Redis memory
-            // Even if it was PENDING, calling DEL on a non-existent key is safe.
+            // 6. Cleanup Redis Memory
             await redis.del(auctionKey);
             
             console.log(`✅ Auction ${auction.id} is now officially CLOSED.`);

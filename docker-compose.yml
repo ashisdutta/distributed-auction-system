@@ -19,5 +19,18 @@ services:
     ports:
       - "6379:6379"
 
+  worker:
+    build: .
+    command: npm run worker
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/auction_db
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - db
+      - redis
 volumes:
   postgres_data:

@@ -6,32 +6,44 @@ import { redis, subClient} from '../lib/redis.js'
 
 export const auctionRouter = new Hono<{ Variables: { userId: string } }>()
 
-auctionRouter.post("/create",async (c)=>{
+auctionRouter.post("/create", async (c) => {
     const userId = c.get('userId');
     const body = await c.req.json();
 
     const parsed = createAuctionSchema.safeParse(body);
-    if(!parsed.success){
-        return c.json( {error: "Invalid data"})
+    if (!parsed.success) {
+        return c.json({ error: "Invalid data" });
     }
 
-    const { title, description, photo, startPrice, durationHours, startTime} = parsed.data;
+    const { title, description, photo, startPrice, durationHours, startTime } = parsed.data;
 
+    // 1. Check for an existing ACTIVE auction with this title by this user
     const existing = await prisma.auction.findFirst({
         where: {
             sellerId: userId,
-            title: body.title,
+            title: title,
             status: "ACTIVE"
         }
     });
 
     if (existing) {
+        // Sync Redis with the ACTUAL current state from the DB
+        const auctionKey = `auction:${existing.id}`;
+        await redis.hset(auctionKey, {
+            price: existing.currentPrice.toString(), // Use the bid price from previous runs
+            winner: existing.winnerId || "",         // Use the existing winner
+            sellerId: existing.sellerId,             // Validation rule
+            endTime: existing.endTime.getTime().toString()
+        });
+
+        console.log(`♻️  Reusing existing auction ${existing.id} - Redis synced to $${existing.currentPrice}`);
         return c.json({ message: "Using existing auction", auction: existing }, 200);
     }
 
+    // 2. If no existing auction, proceed with creation logic
     try {
-        const startAt = startTime ? new Date(startTime):new Date();
-        const endAt = new Date(startAt.getTime() + durationHours*60*60*1000);
+        const startAt = startTime ? new Date(startTime) : new Date();
+        const endAt = new Date(startAt.getTime() + durationHours * 60 * 60 * 1000);
 
         const isLiveNow = startAt <= new Date();
         const status = isLiveNow ? "ACTIVE" : "PENDING";
@@ -43,32 +55,34 @@ auctionRouter.post("/create",async (c)=>{
                 photo,
                 startPrice,
                 currentPrice: startPrice,
-                sellerId:userId,
+                sellerId: userId,
                 startTime: startAt,
-                endTime:endAt,
+                endTime: endAt,
                 status
             }
         });
 
-        //If a user creates an auction and sets the startTime to right now
+        // 3. Warm up Redis for NEW live auctions
         if (status === "ACTIVE") {
-        const auctionKey = `auction:${auction.id}`;
-        await redis.hset(auctionKey, {
-            price: auction.startPrice.toString(),
-            winner: "",
-            sellerId: userId,
-            endTime: auction.endTime.getTime().toString()
-        });
-    }
+            const auctionKey = `auction:${auction.id}`;
+            await redis.hset(auctionKey, {
+                price: auction.startPrice.toString(),
+                winner: "",
+                sellerId: userId,
+                endTime: auction.endTime.getTime().toString()
+            });
+        }
 
         return c.json({ 
-        message: "Auction created successfully", 
-        auction: auction 
-    }, 201);
+            message: "Auction created successfully", 
+            auction: auction 
+        }, 201);
+
     } catch (error) {
+        console.error("Create Auction Error:", error);
         return c.json({ error: "Failed to create auction" }, 500);
     }
-})
+});
 
 auctionRouter.post("/:id/start", async (c)=>{
     const userId = c.get("userId");
@@ -95,10 +109,11 @@ auctionRouter.post("/:id/start", async (c)=>{
         });
 
         const auctionKey = `auction:${id}`;
+        const initialPrice = auction.currentPrice || auction.startPrice;
 
         await redis.hset(auctionKey, {
-            price: updated.startPrice.toString(), // Tell Redis the starting price
-            winner: "", 
+            price: initialPrice.toString(), // Tell Redis the starting price
+            winner: auction.winnerId || "", 
             sellerId: userId,                          // No winner yet
             endTime: newEndTime.getTime().toString() // Tell Redis when to stop
         });
