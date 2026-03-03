@@ -7,23 +7,31 @@ interface CustomRedis extends Redis {
         amount: number,
         userId: string,
         now: number
-    ): Promise<"SUCCESS" | "LOW_BID" | "EXPIRED" | "AUCTION_NOT_FOUND">;
+    ): Promise<"SUCCESS" | "LOW_BID" | "EXPIRED" | "AUCTION_NOT_FOUND" | "SELLER_CANNOT_BID">;
 }
 
 // 2. The Atomic Lua Script (The "Referee")
 const BID_LUA_SCRIPT = `
-    local current_price = tonumber(redis.call('HGET', KEYS[1], 'price'))
-    local end_time = tonumber(redis.call('HGET', KEYS[1], 'endTime'))
-    local now = tonumber(ARGV[3])
+    local current_price = tonumber(redis.call('hget', KEYS[1], 'price'))
+    local seller_id = redis.call('hget', KEYS[1], 'sellerId')
+    local bidder_id = ARGV[2]
+    local end_time = tonumber(redis.call('hget', KEYS[1], 'endTime'))
+    local current_time = tonumber(ARGV[3])
 
-    if not current_price or not end_time then 
-        return "AUCTION_NOT_FOUND" 
-    end
+    -- 1. Check if Auction exists
+    if not current_price then return "AUCTION_NOT_FOUND" end
 
-    if now > end_time then return "EXPIRED" end
+    -- 2. Check if Auction ended
+    if current_time > end_time then return "EXPIRED" end
+
+    -- 3. VALIDATION: Check if bidder is the seller
+    if bidder_id == seller_id then return "SELLER_CANNOT_BID" end
+
+    -- 4. Check if bid is high enough
     if tonumber(ARGV[1]) <= current_price then return "LOW_BID" end
 
-    redis.call('HSET', KEYS[1], 'price', ARGV[1], 'winner', ARGV[2])
+    -- 5. SUCCESS: Update Redis
+    redis.call('hset', KEYS[1], 'price', ARGV[1], 'winner', bidder_id)
     return "SUCCESS"
 `;
 

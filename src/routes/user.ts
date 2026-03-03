@@ -2,7 +2,7 @@ import {Hono} from 'hono'
 import prisma from '../lib/prisma.js'
 import { signupInput, emailSchema, signinInput} from '../middleware/zod.js'
 import nodemailer from 'nodemailer'
-import redis from '../lib/redis.js'
+import {redis} from '../lib/redis.js'
 import {sign} from "hono/jwt"
 import {setCookie, deleteCookie} from "hono/cookie"
 

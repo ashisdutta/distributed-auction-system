@@ -17,6 +17,18 @@ auctionRouter.post("/create",async (c)=>{
 
     const { title, description, photo, startPrice, durationHours, startTime} = parsed.data;
 
+    const existing = await prisma.auction.findFirst({
+        where: {
+            sellerId: userId,
+            title: body.title,
+            status: "ACTIVE"
+        }
+    });
+
+    if (existing) {
+        return c.json({ message: "Using existing auction", auction: existing }, 200);
+    }
+
     try {
         const startAt = startTime ? new Date(startTime):new Date();
         const endAt = new Date(startAt.getTime() + durationHours*60*60*1000);
@@ -38,9 +50,21 @@ auctionRouter.post("/create",async (c)=>{
             }
         });
 
-        return c.json({
-            message: isLiveNow ? "Auction is live": `Auction scheduled for ${startAt.toLocaleString()}`
-        })
+        //If a user creates an auction and sets the startTime to right now
+        if (status === "ACTIVE") {
+        const auctionKey = `auction:${auction.id}`;
+        await redis.hset(auctionKey, {
+            price: auction.startPrice.toString(),
+            winner: "",
+            sellerId: userId,
+            endTime: auction.endTime.getTime().toString()
+        });
+    }
+
+        return c.json({ 
+        message: "Auction created successfully", 
+        auction: auction 
+    }, 201);
     } catch (error) {
         return c.json({ error: "Failed to create auction" }, 500);
     }
@@ -68,6 +92,15 @@ auctionRouter.post("/:id/start", async (c)=>{
                 startTime: now,
                 endTime: newEndTime
             }
+        });
+
+        const auctionKey = `auction:${id}`;
+
+        await redis.hset(auctionKey, {
+            price: updated.startPrice.toString(), // Tell Redis the starting price
+            winner: "", 
+            sellerId: userId,                          // No winner yet
+            endTime: newEndTime.getTime().toString() // Tell Redis when to stop
         });
 
         return c.json({ message: "Auction is now live!", auction: updated });
@@ -153,6 +186,9 @@ auctionRouter.post("/:id/bid", async (c) => {
         }
         if (result === "AUCTION_NOT_FOUND") {
             return c.json({ error: "Auction data not found in cache." }, 404);
+        }
+        if (result === "SELLER_CANNOT_BID") {
+            return c.json({ error: "Sellers cannot bid on their own auctions!" }, 403);
         }
 
         // STEP 2: Redis Pub/Sub (The Notification Layer)
