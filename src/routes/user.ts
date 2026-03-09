@@ -5,6 +5,7 @@ import nodemailer from 'nodemailer'
 import {redis} from '../lib/redis.js'
 import {sign} from "hono/jwt"
 import {setCookie, deleteCookie} from "hono/cookie"
+import bcrypt from "bcryptjs"
 
 
 export const userRouter = new Hono()
@@ -90,14 +91,17 @@ userRouter.post("/signup", async (c)=>{
 
     const {email, name, password} = parsed.data;
 
+
+
     const isVerified = await redis.get(`verified_email:${email}`);
     if (!isVerified) {
         return c.json({ error: "Please verify your email first" }, 403);
     }
 
+    const hashedPassword = await bcrypt.hash(password, 10);
     try {
         const newUser = await prisma.user.create({
-            data:{email, name, password}
+            data:{email, name, password:hashedPassword}
         })
         
 
@@ -131,11 +135,26 @@ userRouter.post("/signin", async (c)=>{
         const user = await prisma.user.findUnique({
             where: {email}
         });
+        
+        const isValid = await bcrypt.compare(password, user?.password as string);
+        if(!isValid){
+            c.status(401);
+            return c.json({
+                message: "Invalid email or password"
+            })
+        }
 
         if(!user){
-            c.status(411)
+            c.status(401)
             return c.json({
                 message: "user not found"
+            })
+        }
+
+        if(password!=user?.password){
+            c.status(411)
+            return c.json({
+                message:"wrong password"
             })
         }
 
