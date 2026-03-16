@@ -36,7 +36,7 @@ userRouter.post("/send-otp", async (c)=>{
     })
     if(existingUser){
         c.status(400)
-        c.json({
+        return c.json({
             error: "Email already registered"
         })
     }
@@ -70,7 +70,6 @@ userRouter.post("/verify-otp", async (c)=>{
             return c.json({error: "Invalid or expired otp"}, 400)
         }
         await redis.setex(`verified_email:${email}`, 900, "true")
-        await redis.del(`otp:${email}`);
 
         return c.json({ message: "Email verified! You can now signup" });
     } catch (error) {
@@ -86,12 +85,10 @@ userRouter.post("/signup", async (c)=>{
 
     const parsed = signupInput.safeParse(body)
     if(!parsed.success){
-        return c.json("incorrect Input format");
+        return c.json({error:"incorrect Input format"}, 403);
     }
 
     const {email, name, password} = parsed.data;
-
-
 
     const isVerified = await redis.get(`verified_email:${email}`);
     if (!isVerified) {
@@ -109,13 +106,13 @@ userRouter.post("/signup", async (c)=>{
 
         setCookie(c,"auth_token", token, {
             httpOnly:true,
-            secure:true,
+            secure:false,
             sameSite:'Lax',
             maxAge: 60*60*24*7
         })
 
         await redis.del(`verified_email:${email}`);
-        return c.json({message:"Welcome to the Auction System!", user:newUser});
+        return c.json({message:"Welcome to the Auction System!", user:newUser}, 200);
     }catch(e){
         return c.json({error: "User already exists or DB error"}, 400)
     }
@@ -126,6 +123,7 @@ userRouter.post("/signin", async (c)=>{
 
     const validated = signinInput.safeParse(body);
     if(!validated.success){
+        c.status(403)
         return c.json({
             error:"Invalid input format"
         })
@@ -135,41 +133,34 @@ userRouter.post("/signin", async (c)=>{
         const user = await prisma.user.findUnique({
             where: {email}
         });
+        if(!user){
+            c.status(401)
+            return c.json({
+                error: "user not found"
+            })
+        }
         
         const isValid = await bcrypt.compare(password, user?.password as string);
         if(!isValid){
             c.status(401);
             return c.json({
-                message: "Invalid email or password"
+                error: "Invalid password"
             })
         }
 
-        if(!user){
-            c.status(401)
-            return c.json({
-                message: "user not found"
-            })
-        }
-
-        if(password!=user?.password){
-            c.status(411)
-            return c.json({
-                message:"wrong password"
-            })
-        }
 
         const token = await sign({id:user.id, name:user.name, email}, process.env.JWT_SECRET as string);
 
         setCookie(c,"auth_token", token, {
             httpOnly:true,
-            secure:true,
+            secure:false,
             sameSite:'Lax',
             maxAge: 60*60*24*7
         })
 
         return c.json({
             message: "User Successfully signedin"
-        })
+        }, 200)
     } catch (error) {
         return c.json({error:"Internal Server error"}, 500)
     }

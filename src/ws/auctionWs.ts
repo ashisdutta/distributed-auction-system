@@ -3,31 +3,31 @@ import { subClient } from "../lib/redis.js";
 
 /**
  * 1. GLOBAL TRACKER (CS Pattern: Observer Map)
- * Key: auctionId, Value: Set of active WebSocket connections
+ * Key: auctionId (or 'global' for the dashboard), Value: Set of active WebSocket connections
  */
 const subscriptions = new Map<string, Set<WSContext>>();
 
 /**
  * 2. ENHANCED REDIS LISTENER
- * Listens for bids and "The Gavel" (Auction End).
  */
 subClient.on('message', (channel, message) => {
-  const auctionId = channel.split(':')[1];
-  const clients = subscriptions.get(auctionId);
+  // channel will either be "auction_updates:123" OR "dashboard_updates:global"
+  // Splitting by ':' gets us either the auctionId ("123") or "global"
+  const roomKey = channel.split(':')[1]; 
+  const clients = subscriptions.get(roomKey);
 
   if (clients) {
     const data = JSON.parse(message);
 
     clients.forEach((ws) => {
       try {
-        // We can now intercept the message to add custom logic if needed
         if (data.type === 'AUCTION_ENDED') {
-            // We could wrap this in a special "Final" UI event for the frontend
             ws.send(JSON.stringify({
               ...data,
               server_note: "The gavel has fallen. This auction is officially closed."
             }));
           } else {
+            // This safely forwards regular bids AND 'NEW_AUCTION' dashboard events
             ws.send(message);
         }
       } catch (err) {
@@ -35,11 +35,10 @@ subClient.on('message', (channel, message) => {
       }
     });
 
-    // Cleanup local memory if the auction is finished
     if (data.type === 'AUCTION_ENDED') {
-      console.log(`🧹 Cleaning up WS room for closed auction: ${auctionId}`);
+      console.log(`🧹 Cleaning up WS room for closed auction: ${roomKey}`);
       subClient.unsubscribe(channel);
-      subscriptions.delete(auctionId);
+      subscriptions.delete(roomKey);
     }
   }
 });
@@ -54,6 +53,7 @@ export const auctionWsHandler = (c: any) => {
       try {
         const data = JSON.parse(event.data.toString());
 
+        // --- SCENARIO A: User joins a specific item's room ---
         if (data.type === 'JOIN_AUCTION') {
           const { auctionId } = data;
           const channel = `auction_updates:${auctionId}`;
@@ -66,6 +66,21 @@ export const auctionWsHandler = (c: any) => {
           subscriptions.get(auctionId)?.add(ws);
           console.log(`📡 User joined room for auction: ${auctionId}`);
         }
+
+        // --- SCENARIO B: User joins the global dashboard lobby ---
+        if (data.type === 'JOIN_DASHBOARD') {
+          const roomKey = 'global';
+          const channel = `dashboard_updates:${roomKey}`;
+
+          if (!subscriptions.has(roomKey)) {
+              subscriptions.set(roomKey, new Set());
+              await subClient.subscribe(channel);
+          }
+          
+          subscriptions.get(roomKey)?.add(ws);
+          console.log(`🌍 User joined the Global Dashboard Lobby`);
+        }
+
       } catch (err) {
         console.error("WS Message Error:", err);
       }
@@ -73,12 +88,17 @@ export const auctionWsHandler = (c: any) => {
 
     onClose: (event: any, ws: WSContext) => {
       // Manual cleanup for individual disconnects
-      subscriptions.forEach((clients, auctionId) => {
+      subscriptions.forEach((clients, roomKey) => {
         if (clients.has(ws)) {
           clients.delete(ws);
           if (clients.size === 0) {
-            subClient.unsubscribe(`auction_updates:${auctionId}`);
-            subscriptions.delete(auctionId);
+            // Reconstruct the correct Redis channel name to unsubscribe
+            const channelToUnsubscribe = roomKey === 'global' 
+                ? `dashboard_updates:global` 
+                : `auction_updates:${roomKey}`;
+                
+            subClient.unsubscribe(channelToUnsubscribe);
+            subscriptions.delete(roomKey);
           }
         }
       });

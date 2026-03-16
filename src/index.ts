@@ -14,7 +14,10 @@ import { startAuctionWorker } from './workers/auctionCloser.js';
 const app = new Hono()
 
 const { injectWebSocket, upgradeWebSocket } = createNodeWebSocket({ app });
-app.use("/*", cors());
+app.use("/api/*", cors(
+  {origin: 'http://localhost:3001',
+  credentials: true}
+));
 
 app.get('/ws', upgradeWebSocket(auctionWsHandler));
 
