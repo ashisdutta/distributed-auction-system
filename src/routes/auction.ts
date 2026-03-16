@@ -73,6 +73,14 @@ auctionRouter.post("/create", async (c) => {
             });
         }
 
+        await redis.publish(
+            'dashboard_updates:global',
+            JSON.stringify({
+                type: 'NEW_AUCTION',
+                payload: auction 
+            })
+        )
+
         return c.json({ 
             message: "Auction created successfully", 
             auction: auction 
