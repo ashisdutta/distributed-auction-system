@@ -4,7 +4,7 @@ import { createAuctionSchema } from '../middleware/zod.js'
 import { redis, subClient} from '../lib/redis.js'
 
 
-export const auctionRouter = new Hono<{ Variables: { userId: string } }>()
+export const auctionRouter = new Hono<{ Variables: { userId: string, userName:string } }>()
 
 auctionRouter.post("/create", async (c) => {
     const userId = c.get('userId');
@@ -200,6 +200,7 @@ auctionRouter.get("/:id", async (c) => {
 
 auctionRouter.post("/:id/bid", async (c) => {
     const userId = c.get('userId');
+    const userName = c.get('userName');
     const auctionId = c.req.param('id');
     const { amount } = await c.req.json();
     const auctionKey = `auction:${auctionId}`;
@@ -231,7 +232,7 @@ auctionRouter.post("/:id/bid", async (c) => {
         const now = new Date();
         await redis.publish(`auction_updates:${auctionId}`, JSON.stringify({
             newPrice: amount,
-            bidderId: userId,
+            bidderId: userName,
             timestamp: now
         }));
 

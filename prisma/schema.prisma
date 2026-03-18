@@ -28,7 +28,7 @@ model Auction{
   id String @id @default(uuid())
   title String
   description String
-  photo String[]
+  photo String[] @default([])
   startPrice Int
   currentPrice Int @default(0)
   startTime DateTime?

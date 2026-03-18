@@ -159,7 +159,7 @@ userRouter.post("/signin", async (c)=>{
         })
 
         return c.json({
-            message: "User Successfully signedin"
+            message: "User Successfully signed in"
         }, 200)
     } catch (error) {
         return c.json({error:"Internal Server error"}, 500)

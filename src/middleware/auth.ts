@@ -12,6 +12,7 @@ export const authMiddleware = async (c: Context, next: Next) => {
     try {
         const payload = await verify(token, process.env.JWT_SECRET as string, "HS256");
         c.set('userId', payload.id);
+        c.set('userName', payload.name)
         
         await next();
     } catch (error) {
