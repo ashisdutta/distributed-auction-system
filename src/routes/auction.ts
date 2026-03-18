@@ -102,6 +102,9 @@ auctionRouter.post("/:id/start", async (c)=>{
         if (!auction) {
             return c.json({ error: "Unauthorized or not found" }, 403);
         }
+        if (!auction.startTime) {
+            return c.json({ error: "Cannot calculate duration. Auction is missing an initial start time." }, 400);
+        }
 
         const durationMs = auction.endTime.getTime() - auction.startTime.getTime();
         const now = new Date();
@@ -171,11 +174,24 @@ auctionRouter.get("/:id", async (c) => {
             where: { id },
             include: {
                 seller: { select: { name: true } },
-                winner: { select: { name: true } }
+                winner: { select: { name: true } },
+                bids: {
+                    orderBy:{amount:'desc'},
+                    include:{
+                        bidder: {select: {name:true}}
+                    }
+                }
             }
         });
+
+        
         if (!auction) return c.json({ error: "Not found" }, 404);
-        return c.json(auction);
+        const { bids, ...auctionData } = auction;
+
+        return c.json({
+            auction: auctionData,
+            bids: bids
+        });
     } catch (e) {
         return c.json({ error: "Error fetching item" }, 500);
     }
@@ -186,12 +202,10 @@ auctionRouter.post("/:id/bid", async (c) => {
     const userId = c.get('userId');
     const auctionId = c.req.param('id');
     const { amount } = await c.req.json();
-    
-    // We target the specific "Hash" key for this auction in Redis
     const auctionKey = `auction:${auctionId}`;
 
     try {
-        // STEP 1: Execute the Lua Script (The Speed Layer)
+        //Execute the Lua Script (The Speed Layer)
         // Using the .placeBid() method we defined in redis.ts
         // It returns SUCCESS, LOW_BID, EXPIRED, or AUCTION_NOT_FOUND
         const result = await redis.placeBid(
@@ -214,18 +228,22 @@ auctionRouter.post("/:id/bid", async (c) => {
             return c.json({ error: "Sellers cannot bid on their own auctions!" }, 403);
         }
 
-        // STEP 2: Redis Pub/Sub (The Notification Layer)
-        // We "Broadcast" this update. The WebSocket server is listening.
+        const now = new Date();
         await redis.publish(`auction_updates:${auctionId}`, JSON.stringify({
             newPrice: amount,
             bidderId: userId,
-            timestamp: new Date()
+            timestamp: now
         }));
 
-        // STEP 3: Postgres Sync (The Persistence Layer)
-        // We update the "Source of Truth" in the background.
-        // Even if this fails, the user is already "winning" in memory.
         try {
+            await prisma.bid.create({
+                data: {
+                    amount: amount,
+                    bidderId: userId,
+                    auctionId: auctionId,
+                    createdAt: now
+                }
+            });
             await prisma.auction.update({
                 where: { id: auctionId },
                 data: {
@@ -235,7 +253,6 @@ auctionRouter.post("/:id/bid", async (c) => {
             });
         } catch (dbError) {
             console.error("Critical: Failed to sync Redis bid to Postgres", dbError);
-            // In a pro system, you'd add this to a retry queue.
         }
 
         return c.json({ message: "Success! You are currently winning." });

@@ -21,6 +21,7 @@ model User {
   password String
   sellAuctions Auction[] @relation("seller")
   winAuctions Auction[] @relation("winner")
+  bids Bid[]
 }
 
 model Auction{
@@ -37,5 +38,18 @@ model Auction{
   seller User @relation("seller",fields: [sellerId], references: [id])
   winnerId String?
   winner User? @relation("winner", fields: [winnerId], references: [id])
+  bids Bid[]
   @@index([status])
+}
+
+model Bid {
+  id        String   @id @default(uuid())
+  amount    Int
+  createdAt DateTime @default(now())
+  bidderId  String
+  bidder    User     @relation(fields: [bidderId], references: [id])
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  @@index([auctionId])
+  @@index([bidderId])
 }
