@@ -39,7 +39,7 @@ model Auction{
   winnerId String?
   winner User? @relation("winner", fields: [winnerId], references: [id])
   bids Bid[]
-  @@index([status])
+  @@index([endTime, status])
 }
 
 model Bid {

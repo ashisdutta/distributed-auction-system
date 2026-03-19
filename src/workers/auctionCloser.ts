@@ -22,7 +22,7 @@ export const startAuctionWorker = () => {
             // 2. DISTRIBUTED LOCK (ASG Protection)
             // Prevents multiple server instances from finalizing the same auction.
             const lockKey = `lock:finalize:${auction.id}`;
-            const acquiredLock = await redis.set(lockKey, "locked", "EX", 30, "NX"); 
+            const acquiredLock = await redis.set(lockKey, "locked", "EX", 60, "NX"); 
 
             if (!acquiredLock) {
                 console.log(`⏩ Skipping ${auction.id}: Another worker is processing it.`);

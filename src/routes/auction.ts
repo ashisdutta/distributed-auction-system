@@ -12,9 +12,9 @@ auctionRouter.post("/create", async (c) => {
 
     const parsed = createAuctionSchema.safeParse(body);
     if (!parsed.success) {
+        console.error("ZOD VALIDATION FAILED:", parsed.error); 
         return c.json({ error: "Invalid data" });
     }
-
     const { title, description, photo, startPrice, durationHours, startTime } = parsed.data;
 
     // 1. Check for an existing ACTIVE auction with this title by this user
@@ -206,9 +206,6 @@ auctionRouter.post("/:id/bid", async (c) => {
     const auctionKey = `auction:${auctionId}`;
 
     try {
-        //Execute the Lua Script (The Speed Layer)
-        // Using the .placeBid() method we defined in redis.ts
-        // It returns SUCCESS, LOW_BID, EXPIRED, or AUCTION_NOT_FOUND
         const result = await redis.placeBid(
             auctionKey, 
             amount, 
@@ -237,21 +234,25 @@ auctionRouter.post("/:id/bid", async (c) => {
         }));
 
         try {
-            await prisma.bid.create({
+
+            await prisma.$transaction([
+                prisma.bid.create({
                 data: {
                     amount: amount,
                     bidderId: userId,
                     auctionId: auctionId,
                     createdAt: now
                 }
-            });
-            await prisma.auction.update({
-                where: { id: auctionId },
-                data: {
-                    currentPrice: amount,
-                    winnerId: userId
-                }
-            });
+                }),
+                prisma.auction.update({
+                    where: { id: auctionId },
+                    data: {
+                        currentPrice: amount,
+                        winnerId: userId
+                    }
+                })
+            ])
+            
         } catch (dbError) {
             console.error("Critical: Failed to sync Redis bid to Postgres", dbError);
         }
