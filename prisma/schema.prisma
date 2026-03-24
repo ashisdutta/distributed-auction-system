@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -8,37 +7,32 @@ datasource db {
   provider = "postgresql"
 }
 
-enum Status{
-  ACTIVE
-  ENDED
-  PENDING
-}
-
 model User {
-  id String @id @default(uuid())
-  name String
-  email String @unique
-  password String
+  id           String    @id @default(uuid())
+  name         String
+  email        String    @unique
+  password     String
   sellAuctions Auction[] @relation("seller")
-  winAuctions Auction[] @relation("winner")
-  bids Bid[]
+  winAuctions  Auction[] @relation("winner")
+  bids         Bid[]
 }
 
-model Auction{
-  id String @id @default(uuid())
-  title String
-  description String
-  photo String[] @default([])
-  startPrice Int
-  currentPrice Int @default(0)
-  startTime DateTime?
-  endTime DateTime
-  status Status @default(PENDING)
-  sellerId String
-  seller User @relation("seller",fields: [sellerId], references: [id])
-  winnerId String?
-  winner User? @relation("winner", fields: [winnerId], references: [id])
-  bids Bid[]
+model Auction {
+  id           String    @id @default(uuid())
+  title        String
+  description  String
+  photo        String[]  @default([])
+  startPrice   Int
+  currentPrice Int       @default(0)
+  startTime    DateTime?
+  endTime      DateTime
+  status       Status    @default(PENDING)
+  sellerId     String
+  winnerId     String?
+  seller       User      @relation("seller", fields: [sellerId], references: [id])
+  winner       User?     @relation("winner", fields: [winnerId], references: [id])
+  bids         Bid[]
+
   @@index([endTime, status])
 }
 
@@ -47,9 +41,16 @@ model Bid {
   amount    Int
   createdAt DateTime @default(now())
   bidderId  String
-  bidder    User     @relation(fields: [bidderId], references: [id])
   auctionId String
   auction   Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder    User     @relation(fields: [bidderId], references: [id])
+
   @@index([auctionId])
   @@index([bidderId])
+}
+
+enum Status {
+  ACTIVE
+  ENDED
+  PENDING
 }

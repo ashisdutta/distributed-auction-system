@@ -3,15 +3,34 @@ import { subClient } from "../lib/redis.js";
 
 const subscriptions = new Map<string, Set<WSContext>>();
 
-const broadcastWatcherCount = (roomKey: string) => {
-  const clients = subscriptions.get(roomKey);
-  if (!clients) return;
-  
-  const count = clients.size;
-  clients.forEach((ws) => {
-    ws.send(JSON.stringify({ type: 'WATCHERS_UPDATE', count }));
+// Keep track of the last count we sent so we don't spam if nobody joined/left
+
+const lastSentCounts = new Map<string, number>();
+
+// This runs once every 3 seconds in the background
+setInterval(() => {
+  subscriptions.forEach((clients, roomKey) => {
+    const currentCount = clients.size;
+    const lastCount = lastSentCounts.get(roomKey) || 0;
+
+    // Only broadcast if the number of watchers actually changed!
+    if (currentCount !== lastCount) {
+      const message = JSON.stringify({ type: 'WATCHERS_UPDATE', count: currentCount });
+      
+      clients.forEach((ws) => {
+        try {
+          ws.send(message);
+        } catch (err) {
+          // Ignore dead sockets, they will be cleaned up by onClose
+        }
+      });
+      
+      // Update our memory
+      lastSentCounts.set(roomKey, currentCount);
+    }
   });
-};
+}, 3000); // 3000ms = 3 seconds
+
 
 const joinRoom = async (roomKey: string, channel: string, ws: WSContext) => {
   if (!subscriptions.has(roomKey)) {
@@ -19,7 +38,7 @@ const joinRoom = async (roomKey: string, channel: string, ws: WSContext) => {
     await subClient.subscribe(channel);
   }
   subscriptions.get(roomKey)?.add(ws);
-  broadcastWatcherCount(roomKey);
+  //broadcastWatcherCount(roomKey);
 };
 
 subClient.on('message', (channel, message) => {
@@ -48,6 +67,7 @@ subClient.on('message', (channel, message) => {
       console.log(`Cleaning up WS room for closed auction: ${roomKey}`);
       subClient.unsubscribe(channel);
       subscriptions.delete(roomKey);
+      lastSentCounts.delete(roomKey);
     }
   }
 });
@@ -83,7 +103,7 @@ export const auctionWsHandler = (c: any) => {
       subscriptions.forEach((clients, roomKey) => {
         if (clients.has(ws)) {
           clients.delete(ws);
-          broadcastWatcherCount(roomKey);
+          //broadcastWatcherCount(roomKey);
           
           if (clients.size === 0) {
             const channelToUnsubscribe = roomKey === 'global' 
@@ -92,6 +112,7 @@ export const auctionWsHandler = (c: any) => {
                 
             subClient.unsubscribe(channelToUnsubscribe);
             subscriptions.delete(roomKey);
+            lastSentCounts.delete(roomKey);
           }
         }
       });

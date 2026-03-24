@@ -7,11 +7,9 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: auction_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      # This is the 'Permanent' part. 
-      # It maps the folder on YOUR machine to the folder INSIDE Docker.
-      - postgres_data:/var/lib/postgresql/data 
+      - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:alpine
@@ -19,18 +17,57 @@ services:
     ports:
       - "6379:6379"
 
+  backend:
+    build: .
+    command: pnpm start
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/auction_db?connection_limit=100&pool_timeout=15
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET="secretkey1"
+    depends_on:
+      - db
+      - redis
+
   worker:
     build: .
     command: npm run worker
     restart: always
     environment:
-      - DATABASE_URL=postgresql://user:password@db:5432/auction_db
+      - DATABASE_URL=postgresql://user:password@db:5432/auction_db?connection_limit=100&pool_timeout=15
       - REDIS_URL=redis://redis:6379
-    volumes:
-      - .:/app
-      - /app/node_modules
     depends_on:
       - db
       - redis
+
+  # ── MONITORING STACK ──────────────────────
+  influxdb:
+    image: influxdb:1.8
+    restart: always
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=k6
+      - INFLUXDB_HTTP_AUTH_ENABLED=false
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+
+  grafana:
+    image: grafana/grafana
+    restart: always
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - influxdb
+
 volumes:
   postgres_data:
+  influxdb_data:
+  grafana_data:

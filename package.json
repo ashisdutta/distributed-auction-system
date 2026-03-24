@@ -5,7 +5,9 @@
     "dev": "tsx watch src/index.ts",
     "worker": "tsx watch src/workers/auctionCloser.ts",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "seed": "node dist/scripts/seed.js",
+    "tokens": "node dist/scripts/generate-tokens.js"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.9",
