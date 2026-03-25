@@ -60,6 +60,8 @@ The system was heavily load-tested using **k6** to simulate high-frequency aucti
 
 ![Grafana Dashboard](https://github.com/ashisdutta/distributed-auction-system/blob/8db100db399b9c9b855da5f665fc504a5ddf3f3d/photos/Screenshot%202026-03-23%20at%207.46.18%E2%80%AFPM.png)
 
+## test video link: https://drive.google.com/file/d/1bvn8HsMETpqjBBh0XMYhjjyDhh35NQiL/view?usp=drive_link
+
 ## 🚀 Getting Started
 
 ### Prerequisites
