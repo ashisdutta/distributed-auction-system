@@ -40,7 +40,7 @@ This system resolves high-frequency bidding conflicts instantly. By combining Re
 ## 📊 System Architecture
 
 *(Insert your System Architecture Diagram here)*
-![Architecture Diagram](./docs/architecture.png) 
+![Architecture Diagram](https://github.com/ashisdutta/distributed-auction-system/blob/92464f80d448fbd3c1220856f466e343e5aed897/photos/Screenshot%202026-03-25%20at%202.36.03%E2%80%AFPM.png) 
 
 1. **Gatekeeper:** Traffic routes through Caddy (SSL/WSS).
 2. **Logic Layer:** The Hono server handles validation.
