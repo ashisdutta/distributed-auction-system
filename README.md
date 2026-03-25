@@ -60,7 +60,7 @@ The system was heavily load-tested using **k6** to simulate high-frequency aucti
 * 🔄 **High Throughput:** Successfully handled ~310 HTTP requests/sec and processed over **590,000 WebSocket messages** (60MB of real-time data) with zero dropped sessions.
 
 *(Insert your Grafana Dashboard / k6 Terminal Screenshot here)*
-![Grafana Dashboard](./docs/grafana-metrics.png)
+![Grafana Dashboard](https://github.com/ashisdutta/distributed-auction-system/blob/8db100db399b9c9b855da5f665fc504a5ddf3f3d/photos/Screenshot%202026-03-23%20at%207.46.18%E2%80%AFPM.png)
 
 ## 🚀 Getting Started
 
