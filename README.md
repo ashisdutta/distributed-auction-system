@@ -39,7 +39,6 @@ This system resolves high-frequency bidding conflicts instantly. By combining Re
 
 ## 📊 System Architecture
 
-*(Insert your System Architecture Diagram here)*
 ![Architecture Diagram](https://github.com/ashisdutta/distributed-auction-system/blob/92464f80d448fbd3c1220856f466e343e5aed897/photos/Screenshot%202026-03-25%20at%202.36.03%E2%80%AFPM.png) 
 
 1. **Gatekeeper:** Traffic routes through Caddy (SSL/WSS).
@@ -59,7 +58,6 @@ The system was heavily load-tested using **k6** to simulate high-frequency aucti
 * 🛡️ **99% Concurrency Block:** The Redis Lua atomic locks achieved a 99% success rate in instantly blocking conflicting/tie bids (6,930 blocked).
 * 🔄 **High Throughput:** Successfully handled ~310 HTTP requests/sec and processed over **590,000 WebSocket messages** (60MB of real-time data) with zero dropped sessions.
 
-*(Insert your Grafana Dashboard / k6 Terminal Screenshot here)*
 ![Grafana Dashboard](https://github.com/ashisdutta/distributed-auction-system/blob/8db100db399b9c9b855da5f665fc504a5ddf3f3d/photos/Screenshot%202026-03-23%20at%207.46.18%E2%80%AFPM.png)
 
 ## 🚀 Getting Started
